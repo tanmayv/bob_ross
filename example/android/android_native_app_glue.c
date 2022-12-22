@@ -50,7 +50,7 @@ static void * debug_capture_thread_fn( void * v )
             --readSize;
         }
         buf[readSize] = 0;  // add null-terminator
-        __android_log_write(ANDROID_LOG_DEBUG, APPNAME, buf); // Set any log level you want
+        __android_log_write(ANDROID_LOG_DEBUG, "tanmay", buf); // Set any log level you want
 #ifdef RDALOGFNCB
 		extern void RDALOGFNCB( int size, char * buf );
 		RDALOGFNCB( readSize, buf );

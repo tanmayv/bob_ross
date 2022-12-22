@@ -63,5 +63,6 @@ set(AAPT ${BUILD_TOOLS}/aapt)
 set(CMAKE_CXX_COMPILER ${CC_ARM64})
 set(CMAKE_C_COMPILER ${CC_ARM64})
 include_directories(${NDK}/sysroot/usr/include ${NDK}/sysroot/usr/include/android ${NDK}/toolchains/llvm/prebuilt/${OS_NAME}/sysroot/usr/include/android ${CMAKE_CURRENT_SOURCE_DIR})
+include_directories(/usr/local/include)
 set(CMAKE_TRY_COMPILE_TARGET_TYPE "STATIC_LIBRARY")
 
