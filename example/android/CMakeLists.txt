@@ -7,10 +7,12 @@ set(APPNAME tanmay)
 set(LABEL ${APPNAME})
 set(APKFILE ${APPNAME}.apk)
 set(PACKAGENAME com.tanmayvijay.${APPNAME})
-set(ANDROIDVERSION 29)
+set(ANDROIDVERSION 30)
 set(ANDROIDTARGET ${ANDROIDVERSION})
 set(UNAME Darwin)
+
 add_library(${APPNAME} MODULE ${SRC})
+
 set_target_properties(${APPNAME} PROPERTIES LINKER_LANGUAGE CXX)
 MACRO(SUBDIRLIST result curdir)
   FILE(GLOB children RELATIVE ${curdir} ${curdir}/*)
@@ -42,7 +44,7 @@ include_directories(${NDK}/sysroot/usr/include ${NDK}/sysroot/usr/include/androi
 # target_include_directories(${APPNAME} PRIVATE rawdraw ${CMAKE_CURRENT_SOURCE_DIR})
 # set(LIB_PATH ${NDK}/toolchains/llvm/prebuilt/${OS_NAME}/sysroot/usr/lib/x86_64-linux-android/${ANDROIDVERSION})
 # target_link_libraries(${APPNAME} m GLESv3 EGL android log -shared -uANativeActivity_onCreate -landroid stdc++ -static-libstdc++)
-target_link_libraries(${APPNAME} m GLESv3 EGL android log)
+target_link_libraries(${APPNAME} m GLESv3 EGL android log bob_ross_gles3)
 # find_package(game-activity REQUIRED CONFIG)
 
 set(KEYSTOREFILE my-release-key.keystore)
@@ -65,10 +67,13 @@ add_custom_target(intermediate_apk ALL
   COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/src/assets ${CMAKE_CURRENT_BINARY_DIR}/apk/assets
   # COMMAND ${CMAKE_COMMAND} -E copy lib${APPNAME}.dylib apk/lib/arm64-v8a/lib${APPNAME}.dylib
   COMMAND ${CMAKE_COMMAND} -E copy lib${APPNAME}.so apk/lib/arm64-v8a/lib${APPNAME}.so
+  COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/opengles2/libbob_ross_gles3.so apk/lib/arm64-v8a/libbob_ross_gles3.so
   COMMAND ${BUILD_TOOLS}/aapt package -f -F temp.apk -I ${ANDROIDSDK}/platforms/android-${ANDROIDVERSION}/android.jar -M AndroidManifest.xml -S ${CMAKE_CURRENT_SOURCE_DIR}/src/res -A apk/assets -v --target-sdk-version ${ANDROIDTARGET}
   COMMAND unzip -o temp.apk -d apk
+  DEPENDS manifest
   COMMENT "Generating intermediate apk")
 
+add_dependencies(intermediate_apk ${APPNAME})
 add_custom_target(zip_apk ALL
   DEPENDS intermediate_apk
   COMMAND ${CMAKE_COMMAND} -E remove makecapk.apk
@@ -85,4 +90,5 @@ add_custom_target(sign_apk ALL
   COMMAND ${BUILD_TOOLS}/apksigner sign --key-pass pass:${STOREPASS} --ks-pass pass:${STOREPASS} --ks ${KEYSTOREFILE} ${APKFILE}
   COMMAND ${CMAKE_COMMAND} -E remove temp.apk
   COMMAND ${CMAKE_COMMAND} -E remove makecapk.apk
+  DEPENDS zip_apk
   COMMENT "Signing apk")

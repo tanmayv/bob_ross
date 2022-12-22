@@ -5,14 +5,15 @@
 
 #include <EGL/egl.h>
 #include <GLES3/gl3.h>
+#include <android/asset_manager.h>
+#include <android/imagedecoder.h>
 #include <android_native_app_glue.h>
 #include <jni.h>
 
-#include <android_out.hpp>
 #include <map>
+#include <vector>
 #include <memory>
-
-// #include "android_out.hpp"
+#include <android_out.hpp>
 
 #define CORNFLOWER_BLUE 100 / 255.f, 149 / 255.f, 237 / 255.f, 1
 // Vertex shader, you'd typically load this from assets
@@ -58,6 +59,8 @@ class Renderer {
   EGLDisplay display_;
   EGLSurface surface_;
   EGLContext context_;
+private:
+  void LoadModels(android_app *app);
   // void DrawExample();
 };
 
@@ -65,6 +68,39 @@ void Renderer::Render() {
   glClear(GL_COLOR_BUFFER_BIT);
   eglSwapBuffers(display_, surface_);
 }
+
+void Renderer::LoadModels(android_app *app) {
+  auto* asset_manager = app->activity->assetManager;
+  AAsset* asset = AAssetManager_open(asset_manager, "brick_01.png", AASSET_MODE_STREAMING);
+  AImageDecoder* decoder;
+  int result = AImageDecoder_createFromAAsset(asset, &decoder);
+  if (result != ANDROID_IMAGE_DECODER_SUCCESS) {
+    aout << "Failed to load asset" << result << std::endl;
+    return;
+  }
+  const AImageDecoderHeaderInfo* info = AImageDecoder_getHeaderInfo(decoder);
+  int32_t width = AImageDecoderHeaderInfo_getWidth(info);
+  int32_t height = AImageDecoderHeaderInfo_getHeight(info);
+
+  auto format =
+    (AndroidBitmapFormat) AImageDecoderHeaderInfo_getAndroidBitmapFormat(info);
+
+  size_t stride = AImageDecoder_getMinimumStride(decoder);
+
+  void* pixels = malloc(height * stride);
+
+  result = AImageDecoder_decodeImage(decoder, pixels, stride, height * stride);
+
+  if (result != ANDROID_IMAGE_DECODER_SUCCESS) {
+    aout << "Failed to decode asset" << result << std::endl;
+    return;
+  }
+
+  AImageDecoder_delete(decoder);
+  AAsset_close(asset);
+  free(pixels);
+}
+
 void Renderer::Init(android_app *app) {
   // Choose your render attributes
   constexpr EGLint attribs[] = {EGL_RENDERABLE_TYPE,
