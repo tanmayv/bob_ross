@@ -10,10 +10,14 @@
 #include <android_native_app_glue.h>
 #include <jni.h>
 
-#include <map>
-#include <vector>
-#include <memory>
 #include <android_out.hpp>
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <vector>
+
+#include "model.hpp"
+#include "shader.hpp"
 
 #define CORNFLOWER_BLUE 100 / 255.f, 149 / 255.f, 237 / 255.f, 1
 // Vertex shader, you'd typically load this from assets
@@ -47,6 +51,65 @@ void main() {
 )fragment";
 
 namespace {
+float *buildOrthographicMatrix(float *outMatrix, float halfHeight, float aspect,
+                               float near, float far) {
+  float halfWidth = halfHeight * aspect;
+
+  // column 1
+  outMatrix[0] = 1.f / halfWidth;
+  outMatrix[1] = 0.f;
+  outMatrix[2] = 0.f;
+  outMatrix[3] = 0.f;
+
+  // column 2
+  outMatrix[4] = 0.f;
+  outMatrix[5] = 1.f / halfHeight;
+  outMatrix[6] = 0.f;
+  outMatrix[7] = 0.f;
+
+  // column 3
+  outMatrix[8] = 0.f;
+  outMatrix[9] = 0.f;
+  outMatrix[10] = -2.f / (far - near);
+  outMatrix[11] = -(far + near) / (far - near);
+
+  // column 4
+  outMatrix[12] = 0.f;
+  outMatrix[13] = 0.f;
+  outMatrix[14] = 0.f;
+  outMatrix[15] = 1.f;
+
+  return outMatrix;
+}
+
+float *buildIdentityMatrix(float *outMatrix) {
+  // column 1
+  outMatrix[0] = 1.f;
+  outMatrix[1] = 0.f;
+  outMatrix[2] = 0.f;
+  outMatrix[3] = 0.f;
+
+  // column 2
+  outMatrix[4] = 0.f;
+  outMatrix[5] = 1.f;
+  outMatrix[6] = 0.f;
+  outMatrix[7] = 0.f;
+
+  // column 3
+  outMatrix[8] = 0.f;
+  outMatrix[9] = 0.f;
+  outMatrix[10] = 1.f;
+  outMatrix[11] = 0.f;
+
+  // column 4
+  outMatrix[12] = 0.f;
+  outMatrix[13] = 0.f;
+  outMatrix[14] = 0.f;
+  outMatrix[15] = 1.f;
+
+  return outMatrix;
+}
+
 class InputManager {
  public:
   std::map<std::string, bool> GetKeysState();
@@ -59,46 +122,93 @@ class Renderer {
   EGLDisplay display_;
   EGLSurface surface_;
   EGLContext context_;
-private:
+
+ private:
   void LoadModels(android_app *app);
+  void update_render_area();
+
+  int width_, height_;
+  std::unique_ptr<Shader> shader_;
+  bool shaderNeedsNewProjectionMatrix_;
+  std::vector<Model> models_;
   // void DrawExample();
 };
 
+void Renderer::update_render_area() {
+  EGLint width;
+  eglQuerySurface(display_, surface_, EGL_WIDTH, &width);
+
+  EGLint height;
+  eglQuerySurface(display_, surface_, EGL_HEIGHT, &height);
+
+  if (width != width_ || height != height_) {
+    width_ = width;
+    height_ = height;
+    glViewport(0, 0, width, height);
+
+    // make sure that we lazily recreate the projection matrix before we render
+    shaderNeedsNewProjectionMatrix_ = true;
+  }
+}
+
 void Renderer::Render() {
+  update_render_area();
+
+  if (shaderNeedsNewProjectionMatrix_) {
+    // a placeholder projection matrix allocated on the stack. Column-major
+    // memory layout
+    float projectionMatrix[16] = {0};
+
+    // build an orthographic projection matrix for 2d rendering
+    buildOrthographicMatrix(projectionMatrix, 2.f,
+                            static_cast<float>(width_) / height_, -1.f, 1.f);
+
+    // send the matrix to the shader
+    // Note: the shader must be active for this to work. Since we only have one
+    // shader for this demo, we can assume that it's active.
+    shader_->setProjectionMatrix(projectionMatrix);
+
+    // make sure the matrix isn't generated every frame
+    shaderNeedsNewProjectionMatrix_ = false;
+  }
   glClear(GL_COLOR_BUFFER_BIT);
+
+  if (!models_.empty()) {
+    for (const auto &model : models_) {
+      shader_->drawModel(model);
+    }
+  }
   eglSwapBuffers(display_, surface_);
 }
 
 void Renderer::LoadModels(android_app *app) {
-  auto* asset_manager = app->activity->assetManager;
-  AAsset* asset = AAssetManager_open(asset_manager, "brick_01.png", AASSET_MODE_STREAMING);
-  AImageDecoder* decoder;
-  int result = AImageDecoder_createFromAAsset(asset, &decoder);
-  if (result != ANDROID_IMAGE_DECODER_SUCCESS) {
-    aout << "Failed to load asset" << result << std::endl;
-    return;
-  }
-  const AImageDecoderHeaderInfo* info = AImageDecoder_getHeaderInfo(decoder);
-  int32_t width = AImageDecoderHeaderInfo_getWidth(info);
-  int32_t height = AImageDecoderHeaderInfo_getHeight(info);
+  /*
+   * This is a square:
+   * 0 --- 1
+   * | \   |
+   * |  \  |
+   * |   \ |
+   * 3 --- 2
+   */
+  std::vector<Vertex> vertices = {
+      Vertex(Vector3{{1, 1, 0}}, Vector2{{0, 0}}),    // 0
+      Vertex(Vector3{{-1, 1, 0}}, Vector2{{1, 0}}),   // 1
+      Vertex(Vector3{{-1, -1, 0}}, Vector2{{1, 1}}),  // 2
+      Vertex(Vector3{{1, -1, 0}}, Vector2{{0, 1}})    // 3
+  };
+  std::vector<Index> indices = {0, 1, 2, 0, 2, 3};
 
-  auto format =
-    (AndroidBitmapFormat) AImageDecoderHeaderInfo_getAndroidBitmapFormat(info);
+  // loads an image and assigns it to the square.
+  //
+  // Note: there is no texture management in this sample, so if you reuse an
+  // image be careful not to load it repeatedly. Since you get a shared_ptr you
+  // can safely reuse it in many models.
+  auto assetManager = app->activity->assetManager;
+  auto spAndroidRobotTexture =
+      TextureAsset::loadAsset(assetManager, "brick_01.png");
 
-  size_t stride = AImageDecoder_getMinimumStride(decoder);
-
-  void* pixels = malloc(height * stride);
-
-  result = AImageDecoder_decodeImage(decoder, pixels, stride, height * stride);
-
-  if (result != ANDROID_IMAGE_DECODER_SUCCESS) {
-    aout << "Failed to decode asset" << result << std::endl;
-    return;
-  }
-
-  AImageDecoder_delete(decoder);
-  AAsset_close(asset);
-  free(pixels);
+  // Create a model and put it in the back of the render list.
+  models_.emplace_back(vertices, indices, spAndroidRobotTexture);
 }
 
 void Renderer::Init(android_app *app) {
@@ -173,11 +283,15 @@ void Renderer::Init(android_app *app) {
   // updateRenderArea()
 
   // setup any other gl related global states
+  shader_ = std::unique_ptr<Shader>(Shader::loadShader(
+      vertex, fragment, "inPosition", "inUV", "uProjection"));
+  shader_->activate();
   glClearColor(CORNFLOWER_BLUE);
 
   // enable alpha globally for now, you probably don't want to do this in a game
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  LoadModels(app);
 }
 
 struct GameState {

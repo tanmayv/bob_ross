@@ -1,5 +1,7 @@
 LIST(APPEND SRC 
   mytest.cc 
+  shader.cpp 
+  texture_asset.cpp
   android_out.cc 
   android_native_app_glue.c)
 
@@ -28,6 +30,7 @@ set(ANDROIDSDK $ENV{ANDROID_HOME})
 SUBDIRLIST(SUBDIRS ${ANDROIDSDK}/ndk)
 list(LENGTH SUBDIRS list_len)
 math(EXPR list_last "${list_len} - 1")
+#include <android/imagedecoder.h>
 list(GET SUBDIRS ${list_last} NDK)
 set(NDK "${ANDROIDSDK}/ndk/${NDK}")
 SUBDIRLIST(SUBDIRS ${ANDROIDSDK}/build-tools)
@@ -44,7 +47,7 @@ include_directories(${NDK}/sysroot/usr/include ${NDK}/sysroot/usr/include/androi
 # target_include_directories(${APPNAME} PRIVATE rawdraw ${CMAKE_CURRENT_SOURCE_DIR})
 # set(LIB_PATH ${NDK}/toolchains/llvm/prebuilt/${OS_NAME}/sysroot/usr/lib/x86_64-linux-android/${ANDROIDVERSION})
 # target_link_libraries(${APPNAME} m GLESv3 EGL android log -shared -uANativeActivity_onCreate -landroid stdc++ -static-libstdc++)
-target_link_libraries(${APPNAME} m GLESv3 EGL android log bob_ross_gles3)
+target_link_libraries(${APPNAME} m GLESv3 EGL android log bob_ross_gles3 jnigraphics)
 # find_package(game-activity REQUIRED CONFIG)
 
 set(KEYSTOREFILE my-release-key.keystore)
